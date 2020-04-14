@@ -64,7 +64,7 @@ func main() {
 
 ```
 # Document
-See documentation or comments in cmprule.go for detail usage
+See [documentation](https://pkg.go.dev/github.com/hujun-open/cmprule?tab=doc) or comments in cmprule.go for detail usage
 
 
 

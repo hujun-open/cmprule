@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+type testStructLv2 struct {
+	Lv1     testStruct
+	Lv2Num1 int
+}
+
+type testStructLv3 struct {
+	Lv2          testStructLv2
+	PointLv2     *testStructLv2
+	PointLv2null *testStructLv2
+	Lv3Num1      int
+}
+
 type testStruct struct {
 	Num1      int
 	Num_uint1 uint
@@ -17,6 +29,8 @@ type testStruct struct {
 	Duration1 time.Duration
 	IP1       net.IP
 	IP2       net.IP
+	PointNum1 *int
+	PointNum2 *int
 }
 
 var test_struct testStruct = testStruct{
@@ -25,11 +39,30 @@ var test_struct testStruct = testStruct{
 	IP1:       net.ParseIP("1.1.1.1"),
 	IP2:       net.ParseIP("2001:dead::1"),
 }
-var test_list = []struct {
+
+var test_structlv2 testStructLv2 = testStructLv2{
+	Lv1:     test_struct,
+	Lv2Num1: 200,
+}
+
+var test_structlv22 testStructLv2 = testStructLv2{
+	Lv1:     test_struct,
+	Lv2Num1: 300,
+}
+
+var test_structlv3 testStructLv3 = testStructLv3{
+	Lv2:      test_structlv2,
+	Lv3Num1:  300,
+	PointLv2: &test_structlv22,
+}
+
+type testResult struct {
 	in         string
 	out_bool   bool
 	expect_err bool
-}{
+}
+
+var test_list_lv1 = []testResult{
 	//int
 	{"Num1:==:-120", true, false},
 	{" Num1 :  ==: -120 ", true, false},
@@ -93,17 +126,48 @@ var test_list = []struct {
 	{"IP2:within:2001:dead::99/64 2002:beef::/128", true, false},
 	{"IP2:notwithin:2002:dead::23/64 2002:beef::/128", false, false},
 	{"IP1:within:1.1.1.1/32 2001:dead::1/32", true, false},
+	//pointer
+	{"PointNum1:==:99", true, false},
+	{"PointNum1:<:99", false, false},
+	{"PointNum1:>=:99", true, false},
+	{"PointNum2:>=:99", false, true},
+	//other tests
+	{"Num_notexist:==:100", false, true},
 }
 
-func TestCmpRule(t *testing.T) {
-	var err error
-	test_struct.Stamp1, err = time.Parse(TIMEFMTSTR, "2020/03/31T15:00:00")
-	if err != nil {
-		t.Fatal(err)
-	}
+var test_list_lv2 = []testResult{
+	//lv2
+	{"Lv1.IP1:within:1.1.1.1/32 2001:dead::1/32", true, false},
+	{"Lv1.IP99:within:1.1.1.1/32 2001:dead::1/32", false, true},
+	{"Lv2Num1:==:200", true, false},
+	{"Lv2Num1:!=:200", false, false},
+	{"Lv2Num99:!=:200", false, true},
+	{"Lv1.IP1.ad:!=:200", false, true},
+	{"Lv1.IP1.ab.cd:!=:200", false, true},
+	{"Lv1:!=:200", false, true},
+	{"Lv1.Stamp1:==:2020/03/31T15:00:00", true, false},
+}
+
+var test_list_lv3 = []testResult{
+	//lv3
+	{"Lv2.Lv1.IP1:within:1.1.1.1/32 2001:dead::1/32", true, false},
+	{"Lv2.Lv1.IP99:within:1.1.1.1/32 2001:dead::1/32", false, true},
+	{"Lv2.Lv2Num1:==:200", true, false},
+	{"Lv2.Lv2Num1:!=:200", false, false},
+	{"Lv2Num99:!=:200", false, true},
+	{"Lv2.Lv1.IP1.ad:!=:200", false, true},
+	{"Lv2.Lv1.IP1.ab.cd:!=:200", false, true},
+	{"Lv2.Lv99.IP1:!=:200", false, true},
+	{"Lv2.Lv1.Str1:!=:100", false, true},
+	{"PointLv2.Lv1.IP1:within:1.1.1.1/32 2001:dead::1/32", true, false},
+	{"PointLv2null.Lv1.IP1:within:1.1.1.1/32 2001:dead::1/32", false, true},
+}
+
+func tableTest(input interface{}, expectedResults []testResult, t *testing.T) {
 	cmp := NewDefaultCMPRule()
 	var result bool
-	for _, tt := range test_list {
+	var err error
+	for _, tt := range expectedResults {
 		err = cmp.ParseRule(tt.in)
 		if err != nil {
 			if !tt.expect_err {
@@ -112,7 +176,7 @@ func TestCmpRule(t *testing.T) {
 				t.Logf("input: %v, expected err: %v", tt.in, err)
 			}
 		} else {
-			result, err = cmp.Compare(test_struct)
+			result, err = cmp.Compare(input)
 			t.Logf("input: %v; result: %v, err: %v", tt.in, result, err)
 			if err != nil {
 				if !tt.expect_err {
@@ -127,4 +191,20 @@ func TestCmpRule(t *testing.T) {
 			}
 		}
 	}
+
+}
+
+func TestCmpRule(t *testing.T) {
+	var err error
+	test_struct.Stamp1, err = time.Parse(TIMEFMTSTR, "2020/03/31T15:00:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	test_struct.PointNum1 = new(int)
+	*test_struct.PointNum1 = 99
+	test_structlv2.Lv1.Stamp1 = test_struct.Stamp1
+	test_structlv3.Lv2.Lv1.Stamp1 = test_struct.Stamp1
+	tableTest(test_struct, test_list_lv1, t)
+	tableTest(test_structlv2, test_list_lv2, t)
+	tableTest(test_structlv3, test_list_lv3, t)
 }

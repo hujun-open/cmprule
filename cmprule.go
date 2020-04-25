@@ -24,7 +24,7 @@ Creats a CMPRule instance for above rule:
 
 Supported Types
 
-cmprule support following golang types of a struct field:
+cmprule support following golang types of a struct field, along with corresponding pointer types:
 
 	- int,int8,int16,int32,int64
 	- uint,uint8,uint16,uint32,uint64
@@ -33,6 +33,7 @@ cmprule support following golang types of a struct field:
 	- time.Time
 	- time.Duration
 	- net.IP
+	- struct: this is specifically means nested struct
 
 
 Default Rule Format
@@ -44,6 +45,8 @@ The default rule format is following:
 - Op: the compare operator
 
 - Value: the vale to compare
+
+field_name could have format as "aa.bb.cc" to support nested struct
 
 Different type has different Op and Value format:
 
@@ -89,6 +92,7 @@ by using CMPRule.SetxxxFunc(), see corresponding function's doc for details
 package cmprule
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -145,6 +149,8 @@ const (
 )
 
 const TIMEFMTSTR = "2006/01/02T15:04:05"
+
+var NilPointErr = errors.New("nil pointer")
 
 //format: "fieldName:Op:Val"
 func defaultDivideFunc(inputrule string) (string, string, string, error) {
@@ -221,6 +227,53 @@ func defaultParseTimeInt64Func(timestr string) (int64, error) {
 	return t.Unix(), nil
 }
 
+//use "." as seperator, like "aaa.bbb.ccc"
+func defaultParseNestedStructFunc(field_name string) []string {
+	return strings.Split(field_name, ".")
+}
+
+//return a struct field based on field_name_list, which is hierchical name list
+func getStructField(input_struct interface{}, field_name_list []string) (interface{}, error) {
+	current_struct := input_struct
+	list_len := len(field_name_list)
+	var current_type reflect.Type
+	var current_value reflect.Value
+	var i int
+	var fname string
+	for i, fname = range field_name_list {
+		current_type = reflect.TypeOf(current_struct)
+		current_value = reflect.ValueOf(current_struct)
+		//if the field is a pointer, return the interface{} it points to
+		if current_type.Kind() == reflect.Ptr {
+			if current_value.IsZero() {
+				return nil, fmt.Errorf("%v is %w", current_type, NilPointErr)
+			}
+			current_struct = reflect.Indirect(current_value).Interface()
+			current_type = reflect.TypeOf(current_struct)
+			current_value = reflect.ValueOf(current_struct)
+		}
+
+		if current_type.Kind() != reflect.Struct {
+			return nil, fmt.Errorf("%v is not a struct", field_name_list[i-1])
+		}
+
+		if _, ok := current_type.FieldByName(fname); !ok {
+			return nil, fmt.Errorf("field %v doesn't exist in %v", fname, current_type.String())
+		}
+		if current_type.Kind() != reflect.Struct && i != list_len-1 {
+			return nil, fmt.Errorf("%v is not a struct", current_type.String())
+		}
+		current_struct = current_value.FieldByName(fname).Interface()
+	}
+	if reflect.TypeOf(current_struct).Kind() == reflect.Ptr {
+		if reflect.ValueOf(current_struct).IsZero() {
+			return nil, fmt.Errorf("%v is %w", reflect.TypeOf(current_struct), NilPointErr)
+		}
+		return reflect.Indirect(reflect.ValueOf(current_struct)).Interface(), nil
+	}
+	return current_struct, nil
+}
+
 type CMPRule struct {
 	ruleFieldName          string
 	ruleOp                 string
@@ -233,6 +286,7 @@ type CMPRule struct {
 	parseNumInt64Func      func(numstr string) (int64, error)
 	parseDurationInt64Func func(durationstr string) (int64, error)
 	parseTimeInt64Func     func(timestr string) (int64, error)
+	parseFieldNamFunc      func(field_name string) []string
 	prepareInt64Type       int
 	numMinStr              string
 	numMaxStr              string
@@ -243,6 +297,7 @@ type CMPRule struct {
 	int64List              []int64
 	strList                []string
 	ipNetList              []*net.IPNet
+	fieldNameList          []string
 }
 
 //Returns a CMPRule instance with default parse functions
@@ -256,6 +311,7 @@ func NewDefaultCMPRule() *CMPRule {
 	r.parseDurationInt64Func = defaultParseDurationInt64Func
 	r.parseTimeInt64Func = defaultParseTimeInt64Func
 	r.parseIPNetListFunc = defaultParseIPNetListFunc
+	r.parseFieldNamFunc = defaultParseNestedStructFunc
 	r.prepareInt64Type = PREPARE_TYPE_NOTPREPARED
 	return r
 }
@@ -274,6 +330,7 @@ func (self *CMPRule) ParseRule(rawrule string) (err error) {
 		self.ipNetList, err = self.parseIPNetListFunc(self.ruleVal)
 	}
 	self.prepareInt64Type = PREPARE_TYPE_NOTPREPARED
+	self.fieldNameList = self.parseFieldNamFunc(self.ruleFieldName)
 	return
 }
 
@@ -312,21 +369,10 @@ func (self *CMPRule) prepareInt64(f func(string) (int64, error)) (err error) {
 	}
 }
 
-//Compare to input, which must be a struct, based on parsed rules
-//return true/false if comparison is done successfully
-//return a non-nil error if fail to do the comparison
-func (self *CMPRule) Compare(input interface{}) (bool, error) {
-	input_type := reflect.TypeOf(input)
-	if input_type.Kind() != reflect.Struct {
-		return false, fmt.Errorf("input is not a struct")
-	}
-	input_value := reflect.ValueOf(input)
-	sf, exists := input_type.FieldByName(self.ruleFieldName)
-	if !exists {
-		return false, fmt.Errorf("field %v doesn't exists in the input struct", self.ruleFieldName)
-	}
-	field_value := input_value.FieldByName(self.ruleFieldName)
-	switch sf.Type.String() {
+func (self *CMPRule) compareElement(element interface{}) (bool, error) {
+	etype := reflect.TypeOf(element)
+	field_value := reflect.ValueOf(element)
+	switch etype.String() {
 	case "int", "int8", "int16", "int32", "int64":
 		if self.prepareInt64Type != PREPARE_TYPE_NUM {
 			err := self.prepareInt64(self.parseNumInt64Func)
@@ -363,8 +409,19 @@ func (self *CMPRule) Compare(input interface{}) (bool, error) {
 	case "net.IP":
 		return self.compareIP(field_value.Interface().(net.IP))
 	default:
-		return false, fmt.Errorf("field %v has unsupported type %v", self.ruleFieldName, sf.Type.String())
+		return false, fmt.Errorf("field %v has unsupported type %v", self.ruleFieldName, etype.String())
 	}
+}
+
+//Compare to input, which must be a struct, based on parsed rules
+//return true/false if comparison is done successfully
+//return a non-nil error if fail to do the comparison
+func (self *CMPRule) Compare(input interface{}) (bool, error) {
+	field_interface, err := getStructField(input, self.fieldNameList)
+	if err != nil {
+		return false, err
+	}
+	return self.compareElement(field_interface)
 }
 
 func (self *CMPRule) compareIP(input_ip net.IP) (bool, error) {
@@ -680,4 +737,11 @@ func (self *CMPRule) SetparseDurationInt64Func(f func(durationstr string) (int64
 //default function uses time.Parse, with format string as const TIMEFMTSTR
 func (self *CMPRule) SetparseTimeInt64Func(f func(timestr string) (int64, error)) {
 	self.parseTimeInt64Func = f
+}
+
+//Set f as function to parse field_name string into a list field name,
+//each represents a field name in the nested struct
+//default function use "." as seperator like "aa.bb.cc"
+func (self *CMPRule) SetParseFieldNameFunc(f func(field_name string) []string) {
+	self.parseFieldNamFunc = f
 }

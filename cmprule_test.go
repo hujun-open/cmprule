@@ -196,7 +196,7 @@ func tableTest(input interface{}, expectedResults []testResult, t *testing.T) {
 
 func TestCmpRule(t *testing.T) {
 	var err error
-	test_struct.Stamp1, err = time.Parse(TIMEFMTSTR, "2020/03/31T15:00:00")
+	test_struct.Stamp1, err = time.Parse(TimeFMTStr, "2020/03/31T15:00:00")
 	if err != nil {
 		t.Fatal(err)
 	}

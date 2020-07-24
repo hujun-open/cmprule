@@ -1,7 +1,10 @@
 // Copyright 2020 Hu Jun. All rights reserved.
 // This project is licensed under the terms of the MIT license.
+// license that can be found in the LICENSE file.
 
-/*Package cmprule compare a field of a struct to a specified value, based on a human-friendly rule in text.
+/*
+Package cmprule compare a field of a struct to a specified value,
+based on a human-friendly rule in text.
 
 An example use case is following:
 	type ExampleStruct struct {
@@ -85,8 +88,9 @@ Different type has different Op and Value format:
 
 Custom Rule Format
 
-Optionally, the rule format could be customized by defining new parsing function and pass it to CMPRule instances,
-by using CMPRule.SetxxxFunc(), see corresponding function's doc for details
+Optionally, the rule format could be customized by defining new parsing
+function and pass it to CMPRule instances, by using CMPRule.SetxxxFunc(),
+See corresponding function's doc for details.
 
 */
 package cmprule
@@ -102,57 +106,60 @@ import (
 	"time"
 )
 
+// compare operators
 const (
-	OP_NUM_EQ         = "=="
-	OP_NUM_NOTEQ      = "!="
-	OP_NUM_L          = ">"
-	OP_NUM_LE         = ">="
-	OP_NUM_S          = "<"
-	OP_NUM_SE         = "<="
-	OP_NUM_IN         = "in"
-	OP_NUM_NOTIN      = "notin"
-	OP_NUM_IS         = "is"
-	OP_NUM_NOT        = "not"
-	OP_STR_SAME       = "same"
-	OP_STR_DIFFER     = "differ"
-	OP_STR_CONTAIN    = "contain"
-	OP_STR_NOTCONTAIN = "notcontain"
-	OP_IP_WIHTIN      = "within"
-	OP_IP_NOTWIHTIN   = "notwithin"
+	opNumEq         = "=="
+	opNumNotEq      = "!="
+	opNumL          = ">"
+	opNumLE         = ">="
+	opNumS          = "<"
+	opNumSE         = "<="
+	opNumIN         = "in"
+	opNumNotIN      = "notin"
+	opNumIs         = "is"
+	opNumNot        = "not"
+	opStrSame       = "same"
+	opStrDiffer     = "differ"
+	opStrContain    = "contain"
+	opStrNotContain = "notcontain"
+	opIPWithin      = "within"
+	opIPNotWithin   = "notwithin"
 )
 
 const (
-	VALUE_SINGLE = iota
-	VALUE_RANGE
-	VALUE_LIST
-	VALUE_INVALID
+	valueSingle = iota
+	valueRange
+	valueList
+	valueInvalid
 )
 
 func detectType(op string) int {
 	switch op {
-	case OP_NUM_EQ, OP_NUM_L, OP_NUM_LE, OP_NUM_NOTEQ, OP_NUM_S, OP_NUM_SE:
-		return VALUE_SINGLE
-	case OP_NUM_IN, OP_NUM_NOTIN:
-		return VALUE_RANGE
-	case OP_NUM_IS, OP_NUM_NOT:
-		return VALUE_LIST
+	case opNumEq, opNumL, opNumLE, opNumNotEq, opNumS, opNumSE:
+		return valueSingle
+	case opNumIN, opNumNotIN:
+		return valueRange
+	case opNumIs, opNumNot:
+		return valueList
 	default:
-		return VALUE_INVALID
+		return valueInvalid
 	}
 }
 
 const (
-	PREPARE_TYPE_NUM = iota
-	PREPARE_TYPE_DURATION
-	PREPARE_TYPE_TIMESTAMP
-	PREPARE_TYPE_NOTPREPARED
+	prepareTypeNum = iota
+	prepareTypeDuration
+	prepareTypeTimestamp
+	prepareTypeNotPrepared
 )
 
-const TIMEFMTSTR = "2006/01/02T15:04:05"
+// TimeFMTStr is the time format string used by default parse time function
+const TimeFMTStr = "2006/01/02T15:04:05"
 
-var NilPointErr = errors.New("nil pointer")
+// ErrNilPoint is error for field in question is a nil pointer
+var ErrNilPoint = errors.New("nil pointer")
 
-//format: "fieldName:Op:Val"
+// format: "fieldName:Op:Val"
 func defaultDivideFunc(inputrule string) (string, string, string, error) {
 	rule := strings.TrimSpace(inputrule)
 	fields := strings.SplitN(rule, ":", 3)
@@ -206,10 +213,10 @@ func defaultParseDurationInt64Func(durationstr string) (int64, error) {
 }
 
 func defaultParseIPNetListFunc(listval string) ([]*net.IPNet, error) {
-	prefix_str_list := strings.Fields(listval)
+	prefixStrList := strings.Fields(listval)
 	var r []*net.IPNet
-	for _, prefix_str := range prefix_str_list {
-		_, prefix, err := net.ParseCIDR(prefix_str)
+	for _, prefixStr := range prefixStrList {
+		_, prefix, err := net.ParseCIDR(prefixStr)
 		if err != nil {
 			return nil, err
 		}
@@ -220,60 +227,61 @@ func defaultParseIPNetListFunc(listval string) ([]*net.IPNet, error) {
 }
 
 func defaultParseTimeInt64Func(timestr string) (int64, error) {
-	t, err := time.Parse(TIMEFMTSTR, timestr)
+	t, err := time.Parse(TimeFMTStr, timestr)
 	if err != nil {
 		return 0, err
 	}
 	return t.Unix(), nil
 }
 
-//use "." as seperator, like "aaa.bbb.ccc"
-func defaultParseNestedStructFunc(field_name string) []string {
-	return strings.Split(field_name, ".")
+// use "." as seperator, like "aaa.bbb.ccc"
+func defaultParseNestedStructFunc(fieldName string) []string {
+	return strings.Split(fieldName, ".")
 }
 
-//return a struct field based on field_name_list, which is hierchical name list
-func getStructField(input_struct interface{}, field_name_list []string) (interface{}, error) {
-	current_struct := input_struct
-	list_len := len(field_name_list)
-	var current_type reflect.Type
-	var current_value reflect.Value
+// return a struct field based on field_name_list, which is hierchical name list
+func getStructField(inputStruct interface{}, fieldNameList []string) (interface{}, error) {
+	currentStruct := inputStruct
+	listLen := len(fieldNameList)
+	var currentType reflect.Type
+	var currentVal reflect.Value
 	var i int
 	var fname string
-	for i, fname = range field_name_list {
-		current_type = reflect.TypeOf(current_struct)
-		current_value = reflect.ValueOf(current_struct)
+	for i, fname = range fieldNameList {
+		currentType = reflect.TypeOf(currentStruct)
+		currentVal = reflect.ValueOf(currentStruct)
 		//if the field is a pointer, return the interface{} it points to
-		if current_type.Kind() == reflect.Ptr {
-			if current_value.IsZero() {
-				return nil, fmt.Errorf("%v is %w", current_type, NilPointErr)
+		if currentType.Kind() == reflect.Ptr {
+			if currentVal.IsZero() {
+				return nil, fmt.Errorf("%v is %w", currentType, ErrNilPoint)
 			}
-			current_struct = reflect.Indirect(current_value).Interface()
-			current_type = reflect.TypeOf(current_struct)
-			current_value = reflect.ValueOf(current_struct)
+			currentStruct = reflect.Indirect(currentVal).Interface()
+			currentType = reflect.TypeOf(currentStruct)
+			currentVal = reflect.ValueOf(currentStruct)
 		}
 
-		if current_type.Kind() != reflect.Struct {
-			return nil, fmt.Errorf("%v is not a struct", field_name_list[i-1])
+		if currentType.Kind() != reflect.Struct {
+			return nil, fmt.Errorf("%v is not a struct", fieldNameList[i-1])
 		}
 
-		if _, ok := current_type.FieldByName(fname); !ok {
-			return nil, fmt.Errorf("field %v doesn't exist in %v", fname, current_type.String())
+		if _, ok := currentType.FieldByName(fname); !ok {
+			return nil, fmt.Errorf("field %v doesn't exist in %v", fname, currentType.String())
 		}
-		if current_type.Kind() != reflect.Struct && i != list_len-1 {
-			return nil, fmt.Errorf("%v is not a struct", current_type.String())
+		if currentType.Kind() != reflect.Struct && i != listLen-1 {
+			return nil, fmt.Errorf("%v is not a struct", currentType.String())
 		}
-		current_struct = current_value.FieldByName(fname).Interface()
+		currentStruct = currentVal.FieldByName(fname).Interface()
 	}
-	if reflect.TypeOf(current_struct).Kind() == reflect.Ptr {
-		if reflect.ValueOf(current_struct).IsZero() {
-			return nil, fmt.Errorf("%v is %w", reflect.TypeOf(current_struct), NilPointErr)
+	if reflect.TypeOf(currentStruct).Kind() == reflect.Ptr {
+		if reflect.ValueOf(currentStruct).IsZero() {
+			return nil, fmt.Errorf("%v is %w", reflect.TypeOf(currentStruct), ErrNilPoint)
 		}
-		return reflect.Indirect(reflect.ValueOf(current_struct)).Interface(), nil
+		return reflect.Indirect(reflect.ValueOf(currentStruct)).Interface(), nil
 	}
-	return current_struct, nil
+	return currentStruct, nil
 }
 
+// CMPRule represents a single compare rule
 type CMPRule struct {
 	ruleFieldName          string
 	ruleOp                 string
@@ -300,7 +308,7 @@ type CMPRule struct {
 	fieldNameList          []string
 }
 
-//Returns a CMPRule instance with default parse functions
+// NewDefaultCMPRule Returns a CMPRule instance with default parse functions
 func NewDefaultCMPRule() *CMPRule {
 	r := new(CMPRule)
 	r.divideRuleFunc = defaultDivideFunc
@@ -312,155 +320,155 @@ func NewDefaultCMPRule() *CMPRule {
 	r.parseTimeInt64Func = defaultParseTimeInt64Func
 	r.parseIPNetListFunc = defaultParseIPNetListFunc
 	r.parseFieldNamFunc = defaultParseNestedStructFunc
-	r.prepareInt64Type = PREPARE_TYPE_NOTPREPARED
+	r.prepareInt64Type = prepareTypeNotPrepared
 	return r
 }
 
-//Parse a rule, see package doc for the default format of the rawrule string
-func (self *CMPRule) ParseRule(rawrule string) (err error) {
-	self.ruleFieldName, self.ruleOp, self.ruleVal, err = self.divideRuleFunc(rawrule)
-	switch self.ruleOp {
-	case OP_NUM_IN, OP_NUM_NOTIN:
-		self.numMinStr, self.numMaxStr, err = self.parseRangeFunc(self.ruleVal)
-	case OP_NUM_IS, OP_NUM_NOT:
-		self.numListStr, err = self.parseNumListFunc(self.ruleVal)
-	case OP_STR_CONTAIN, OP_STR_DIFFER, OP_STR_NOTCONTAIN, OP_STR_SAME:
-		self.strList, err = self.parseStrListFunc(self.ruleVal)
-	case OP_IP_WIHTIN, OP_IP_NOTWIHTIN:
-		self.ipNetList, err = self.parseIPNetListFunc(self.ruleVal)
+// ParseRule Parses a string to get a rule, see package doc for the default format of the rawrule string
+func (cmprule *CMPRule) ParseRule(rawrule string) (err error) {
+	cmprule.ruleFieldName, cmprule.ruleOp, cmprule.ruleVal, err = cmprule.divideRuleFunc(rawrule)
+	switch cmprule.ruleOp {
+	case opNumIN, opNumNotIN:
+		cmprule.numMinStr, cmprule.numMaxStr, err = cmprule.parseRangeFunc(cmprule.ruleVal)
+	case opNumIs, opNumNot:
+		cmprule.numListStr, err = cmprule.parseNumListFunc(cmprule.ruleVal)
+	case opStrContain, opStrDiffer, opStrNotContain, opStrSame:
+		cmprule.strList, err = cmprule.parseStrListFunc(cmprule.ruleVal)
+	case opIPWithin, opIPNotWithin:
+		cmprule.ipNetList, err = cmprule.parseIPNetListFunc(cmprule.ruleVal)
 	}
-	self.prepareInt64Type = PREPARE_TYPE_NOTPREPARED
-	self.fieldNameList = self.parseFieldNamFunc(self.ruleFieldName)
+	cmprule.prepareInt64Type = prepareTypeNotPrepared
+	cmprule.fieldNameList = cmprule.parseFieldNamFunc(cmprule.ruleFieldName)
 	return
 }
 
-func (self *CMPRule) prepareInt64(f func(string) (int64, error)) (err error) {
-	optype := detectType(self.ruleOp)
+func (cmprule *CMPRule) prepareInt64(f func(string) (int64, error)) (err error) {
+	optype := detectType(cmprule.ruleOp)
 	switch optype {
-	case VALUE_SINGLE:
-		self.int64Single, err = f(self.ruleVal)
+	case valueSingle:
+		cmprule.int64Single, err = f(cmprule.ruleVal)
 		return
-	case VALUE_RANGE:
-		self.int64Min, err = f(self.numMinStr)
+	case valueRange:
+		cmprule.int64Min, err = f(cmprule.numMinStr)
 		if err != nil {
 			return
 		}
-		self.int64Max, err = f(self.numMaxStr)
+		cmprule.int64Max, err = f(cmprule.numMaxStr)
 		if err != nil {
 			return
 		}
-		if self.int64Max < self.int64Min {
+		if cmprule.int64Max < cmprule.int64Min {
 			err = fmt.Errorf("invalid range value, max value is smaller than min value")
 		}
 		return
-	case VALUE_LIST:
-		self.int64List = []int64{}
-		for _, str := range self.numListStr {
+	case valueList:
+		cmprule.int64List = []int64{}
+		for _, str := range cmprule.numListStr {
 			var v int64
 			v, err = f(str)
 			if err != nil {
 				return
 			}
-			self.int64List = append(self.int64List, v)
+			cmprule.int64List = append(cmprule.int64List, v)
 		}
 		return
 	default:
-		return fmt.Errorf("invalid op for int64,%v", self.ruleOp)
+		return fmt.Errorf("invalid op for int64,%v", cmprule.ruleOp)
 	}
 }
 
-func (self *CMPRule) compareElement(element interface{}) (bool, error) {
+func (cmprule *CMPRule) compareElement(element interface{}) (bool, error) {
 	etype := reflect.TypeOf(element)
-	field_value := reflect.ValueOf(element)
+	fieldVal := reflect.ValueOf(element)
 	switch etype.String() {
 	case "int", "int8", "int16", "int32", "int64":
-		if self.prepareInt64Type != PREPARE_TYPE_NUM {
-			err := self.prepareInt64(self.parseNumInt64Func)
+		if cmprule.prepareInt64Type != prepareTypeNum {
+			err := cmprule.prepareInt64(cmprule.parseNumInt64Func)
 			if err != nil {
 				return false, err
 			}
-			self.prepareInt64Type = PREPARE_TYPE_NUM
+			cmprule.prepareInt64Type = prepareTypeNum
 		}
-		return self.compareNumberic(field_value.Int())
+		return cmprule.compareNumberic(fieldVal.Int())
 	case "uint", "uint8", "uint16", "uint32", "uint64":
-		return self.compareNumberic(field_value.Uint())
+		return cmprule.compareNumberic(fieldVal.Uint())
 	case "float32", "float64":
-		return self.compareNumberic(field_value.Float())
+		return cmprule.compareNumberic(fieldVal.Float())
 	case "string":
-		return self.compareString(field_value.String())
+		return cmprule.compareString(fieldVal.String())
 	case "time.Duration":
-		if self.prepareInt64Type != PREPARE_TYPE_DURATION {
-			err := self.prepareInt64(self.parseDurationInt64Func)
+		if cmprule.prepareInt64Type != prepareTypeDuration {
+			err := cmprule.prepareInt64(cmprule.parseDurationInt64Func)
 			if err != nil {
 				return false, err
 			}
-			self.prepareInt64Type = PREPARE_TYPE_DURATION
+			cmprule.prepareInt64Type = prepareTypeDuration
 		}
-		return self.compareNumberic(field_value.Interface().(time.Duration).Nanoseconds())
+		return cmprule.compareNumberic(fieldVal.Interface().(time.Duration).Nanoseconds())
 	case "time.Time":
-		if self.prepareInt64Type != PREPARE_TYPE_TIMESTAMP {
-			err := self.prepareInt64(self.parseTimeInt64Func)
+		if cmprule.prepareInt64Type != prepareTypeTimestamp {
+			err := cmprule.prepareInt64(cmprule.parseTimeInt64Func)
 			if err != nil {
 				return false, err
 			}
-			self.prepareInt64Type = PREPARE_TYPE_TIMESTAMP
+			cmprule.prepareInt64Type = prepareTypeTimestamp
 		}
-		return self.compareNumberic(field_value.Interface().(time.Time).Unix())
+		return cmprule.compareNumberic(fieldVal.Interface().(time.Time).Unix())
 	case "net.IP":
-		return self.compareIP(field_value.Interface().(net.IP))
+		return cmprule.compareIP(fieldVal.Interface().(net.IP))
 	default:
-		return false, fmt.Errorf("field %v has unsupported type %v", self.ruleFieldName, etype.String())
+		return false, fmt.Errorf("field %v has unsupported type %v", cmprule.ruleFieldName, etype.String())
 	}
 }
 
-//Compare to input, which must be a struct, based on parsed rules
-//return true/false if comparison is done successfully
-//return a non-nil error if fail to do the comparison
-func (self *CMPRule) Compare(input interface{}) (bool, error) {
-	field_interface, err := getStructField(input, self.fieldNameList)
+// Compare to input, which must be a struct, based on parsed rules
+// return true/false if comparison is done successfully
+// return a non-nil error if fail to do the comparison
+func (cmprule *CMPRule) Compare(input interface{}) (bool, error) {
+	fieldInt, err := getStructField(input, cmprule.fieldNameList)
 	if err != nil {
 		return false, err
 	}
-	return self.compareElement(field_interface)
+	return cmprule.compareElement(fieldInt)
 }
 
-func (self *CMPRule) compareIP(input_ip net.IP) (bool, error) {
-	for _, prefix := range self.ipNetList {
-		if prefix.Contains(input_ip) {
+func (cmprule *CMPRule) compareIP(inputip net.IP) (bool, error) {
+	for _, prefix := range cmprule.ipNetList {
+		if prefix.Contains(inputip) {
 			return true, nil
 		}
 	}
 	return false, nil
 }
 
-func (self *CMPRule) compareString(input string) (bool, error) {
-	switch self.ruleOp {
-	case OP_STR_SAME:
-		for _, val := range self.strList {
+func (cmprule *CMPRule) compareString(input string) (bool, error) {
+	switch cmprule.ruleOp {
+	case opStrSame:
+		for _, val := range cmprule.strList {
 			if val == input {
 				return true, nil
 			}
 		}
 		return false, nil
-	case OP_STR_DIFFER:
+	case opStrDiffer:
 		found := false
-		for _, val := range self.strList {
+		for _, val := range cmprule.strList {
 			if val == input {
 				found = true
 				break
 			}
 		}
 		return !found, nil
-	case OP_STR_CONTAIN:
-		for _, val := range self.strList {
+	case opStrContain:
+		for _, val := range cmprule.strList {
 			if strings.Contains(input, val) {
 				return true, nil
 			}
 		}
 		return false, nil
-	case OP_STR_NOTCONTAIN:
+	case opStrNotContain:
 		found := false
-		for _, val := range self.strList {
+		for _, val := range cmprule.strList {
 			if strings.Contains(input, val) {
 				found = true
 				break
@@ -468,118 +476,118 @@ func (self *CMPRule) compareString(input string) (bool, error) {
 		}
 		return !found, nil
 	default:
-		return false, fmt.Errorf("invalid op %v for string", self.ruleOp)
+		return false, fmt.Errorf("invalid op %v for string", cmprule.ruleOp)
 	}
 
 }
 
-//Clear the previous pre-parsed int64 values, this is only needed when compare a new type of struct with a already parsed rule
-//e.g. this is not needed, if you use same rule to compare different instances of same type of struct
-func (self *CMPRule) ClearPreparedInt64Value() {
-	self.prepareInt64Type = PREPARE_TYPE_NOTPREPARED
+// ClearPreparedInt64Value Clear the previous pre-parsed int64 values, this is only needed when compare a new type of struct with a already parsed rule
+// e.g. this is not needed, if you use same rule to compare different instances of same type of struct
+func (cmprule *CMPRule) ClearPreparedInt64Value() {
+	cmprule.prepareInt64Type = prepareTypeNotPrepared
 }
 
 //input could only be int64,uint64 or float64
-func (self *CMPRule) compareNumberic(input interface{}) (bool, error) {
-	input_kind := reflect.TypeOf(input).Kind()
-	switch input_kind {
+func (cmprule *CMPRule) compareNumberic(input interface{}) (bool, error) {
+	inputKind := reflect.TypeOf(input).Kind()
+	switch inputKind {
 	case reflect.Int64:
 		inputval := input.(int64)
-		vtype := detectType(self.ruleOp)
+		vtype := detectType(cmprule.ruleOp)
 		switch vtype {
-		case VALUE_SINGLE:
-			switch self.ruleOp {
+		case valueSingle:
+			switch cmprule.ruleOp {
 			case "==":
-				return self.int64Single == inputval, nil
+				return cmprule.int64Single == inputval, nil
 			case "!=":
-				return self.int64Single != inputval, nil
+				return cmprule.int64Single != inputval, nil
 			case ">=":
-				return inputval >= self.int64Single, nil
+				return inputval >= cmprule.int64Single, nil
 			case "<=":
-				return inputval <= self.int64Single, nil
+				return inputval <= cmprule.int64Single, nil
 			case ">":
-				return inputval > self.int64Single, nil
+				return inputval > cmprule.int64Single, nil
 			case "<":
-				return inputval < self.int64Single, nil
+				return inputval < cmprule.int64Single, nil
 			default:
-				return false, fmt.Errorf("invalid op %v for type %v value %v", self.ruleOp, input_kind, self.ruleVal)
+				return false, fmt.Errorf("invalid op %v for type %v value %v", cmprule.ruleOp, inputKind, cmprule.ruleVal)
 			}
-		case VALUE_RANGE:
-			switch self.ruleOp {
+		case valueRange:
+			switch cmprule.ruleOp {
 			case "in":
-				return inputval >= self.int64Min && inputval <= self.int64Max, nil
+				return inputval >= cmprule.int64Min && inputval <= cmprule.int64Max, nil
 			case "notin":
-				return !(inputval >= self.int64Min && inputval <= self.int64Max), nil
+				return !(inputval >= cmprule.int64Min && inputval <= cmprule.int64Max), nil
 			default:
-				return false, fmt.Errorf("invalid op %v for type %v value %v", self.ruleOp, input_kind, self.ruleVal)
+				return false, fmt.Errorf("invalid op %v for type %v value %v", cmprule.ruleOp, inputKind, cmprule.ruleVal)
 			}
-		case VALUE_LIST:
+		case valueList:
 			found := false
-			for _, v := range self.int64List {
+			for _, v := range cmprule.int64List {
 				if inputval == v {
 					found = true
 					break
 				}
 			}
-			switch self.ruleOp {
+			switch cmprule.ruleOp {
 			case "is":
 				return found, nil
 			case "not":
 				return !found, nil
 			default:
-				return false, fmt.Errorf("invalid op %v for type %v, value %v", self.ruleOp, input_kind, self.ruleVal)
+				return false, fmt.Errorf("invalid op %v for type %v, value %v", cmprule.ruleOp, inputKind, cmprule.ruleVal)
 			}
 		default:
-			return false, fmt.Errorf("invalid op and/or value: %v %v", self.ruleOp, self.ruleVal)
+			return false, fmt.Errorf("invalid op and/or value: %v %v", cmprule.ruleOp, cmprule.ruleVal)
 		}
 	case reflect.Uint64:
 		inputval := input.(uint64)
-		vtype := detectType(self.ruleOp)
+		vtype := detectType(cmprule.ruleOp)
 		switch vtype {
-		case VALUE_SINGLE:
-			single_val, err := strconv.ParseUint(self.ruleVal, 0, 64)
+		case valueSingle:
+			singleVal, err := strconv.ParseUint(cmprule.ruleVal, 0, 64)
 			if err != nil {
-				return false, fmt.Errorf("can't parse %v into int", self.ruleVal)
+				return false, fmt.Errorf("can't parse %v into int", cmprule.ruleVal)
 			}
-			switch self.ruleOp {
+			switch cmprule.ruleOp {
 			case "==":
-				return single_val == inputval, nil
+				return singleVal == inputval, nil
 			case "!=":
-				return single_val != inputval, nil
+				return singleVal != inputval, nil
 			case ">=":
-				return inputval >= single_val, nil
+				return inputval >= singleVal, nil
 			case "<=":
-				return inputval <= single_val, nil
+				return inputval <= singleVal, nil
 			case ">":
-				return inputval > single_val, nil
+				return inputval > singleVal, nil
 			case "<":
-				return inputval < single_val, nil
+				return inputval < singleVal, nil
 			default:
-				return false, fmt.Errorf("invalid op %v for type %v value %v", self.ruleOp, input_kind, self.ruleVal)
+				return false, fmt.Errorf("invalid op %v for type %v value %v", cmprule.ruleOp, inputKind, cmprule.ruleVal)
 			}
-		case VALUE_RANGE:
-			min, err := strconv.ParseUint(self.numMinStr, 0, 64)
+		case valueRange:
+			min, err := strconv.ParseUint(cmprule.numMinStr, 0, 64)
 			if err != nil {
-				return false, fmt.Errorf("invalid range value %v", self.numMinStr)
+				return false, fmt.Errorf("invalid range value %v", cmprule.numMinStr)
 			}
-			max, err := strconv.ParseUint(self.numMaxStr, 0, 64)
+			max, err := strconv.ParseUint(cmprule.numMaxStr, 0, 64)
 			if err != nil {
-				return false, fmt.Errorf("invalid range value %v", self.numMaxStr)
+				return false, fmt.Errorf("invalid range value %v", cmprule.numMaxStr)
 			}
 			if min > max {
-				return false, fmt.Errorf("invalid range value, min>max %v", self.ruleVal)
+				return false, fmt.Errorf("invalid range value, min>max %v", cmprule.ruleVal)
 			}
-			switch self.ruleOp {
+			switch cmprule.ruleOp {
 			case "in":
 				return inputval >= min && inputval <= max, nil
 			case "notin":
 				return !(inputval >= min && inputval <= max), nil
 			default:
-				return false, fmt.Errorf("invalid op %v for type %v value %v", self.ruleOp, input_kind, self.ruleVal)
+				return false, fmt.Errorf("invalid op %v for type %v value %v", cmprule.ruleOp, inputKind, cmprule.ruleVal)
 			}
-		case VALUE_LIST:
+		case valueList:
 			var vallist []uint64
-			for _, s := range self.numListStr {
+			for _, s := range cmprule.numListStr {
 				v, err := strconv.ParseUint(s, 0, 64)
 				if err != nil {
 					return false, fmt.Errorf("%v is not a valid int value", s)
@@ -593,66 +601,66 @@ func (self *CMPRule) compareNumberic(input interface{}) (bool, error) {
 					break
 				}
 			}
-			switch self.ruleOp {
+			switch cmprule.ruleOp {
 			case "is":
 				return found, nil
 			case "not":
 				return !found, nil
 			default:
-				return false, fmt.Errorf("invalid op %v for type %v, value %v", self.ruleOp, input_kind, self.ruleVal)
+				return false, fmt.Errorf("invalid op %v for type %v, value %v", cmprule.ruleOp, inputKind, cmprule.ruleVal)
 			}
 		default:
-			return false, fmt.Errorf("invalid op and/or value: %v %v", self.ruleOp, self.ruleVal)
+			return false, fmt.Errorf("invalid op and/or value: %v %v", cmprule.ruleOp, cmprule.ruleVal)
 
 		}
 	case reflect.Float64:
 		inputval := input.(float64)
-		vtype := detectType(self.ruleOp)
+		vtype := detectType(cmprule.ruleOp)
 		switch vtype {
-		case VALUE_SINGLE:
-			single_val, err := strconv.ParseFloat(self.ruleVal, 64)
+		case valueSingle:
+			singleVal, err := strconv.ParseFloat(cmprule.ruleVal, 64)
 			if err != nil {
-				return false, fmt.Errorf("can't parse %v into int", self.ruleVal)
+				return false, fmt.Errorf("can't parse %v into int", cmprule.ruleVal)
 			}
-			switch self.ruleOp {
+			switch cmprule.ruleOp {
 			case "==":
-				return single_val == inputval, nil
+				return singleVal == inputval, nil
 			case "!=":
-				return single_val != inputval, nil
+				return singleVal != inputval, nil
 			case ">=":
-				return inputval >= single_val, nil
+				return inputval >= singleVal, nil
 			case "<=":
-				return inputval <= single_val, nil
+				return inputval <= singleVal, nil
 			case ">":
-				return inputval > single_val, nil
+				return inputval > singleVal, nil
 			case "<":
-				return inputval < single_val, nil
+				return inputval < singleVal, nil
 			default:
-				return false, fmt.Errorf("invalid op %v for type %v value %v", self.ruleOp, input_kind, self.ruleVal)
+				return false, fmt.Errorf("invalid op %v for type %v value %v", cmprule.ruleOp, inputKind, cmprule.ruleVal)
 			}
-		case VALUE_RANGE:
-			min, err := strconv.ParseFloat(self.numMinStr, 64)
+		case valueRange:
+			min, err := strconv.ParseFloat(cmprule.numMinStr, 64)
 			if err != nil {
-				return false, fmt.Errorf("invalid range value %v", self.numMinStr)
+				return false, fmt.Errorf("invalid range value %v", cmprule.numMinStr)
 			}
-			max, err := strconv.ParseFloat(self.numMaxStr, 64)
+			max, err := strconv.ParseFloat(cmprule.numMaxStr, 64)
 			if err != nil {
-				return false, fmt.Errorf("invalid range value %v", self.numMaxStr)
+				return false, fmt.Errorf("invalid range value %v", cmprule.numMaxStr)
 			}
 			if min > max {
-				return false, fmt.Errorf("invalid range value, min>max %v", self.ruleVal)
+				return false, fmt.Errorf("invalid range value, min>max %v", cmprule.ruleVal)
 			}
-			switch self.ruleOp {
+			switch cmprule.ruleOp {
 			case "in":
 				return inputval >= min && inputval <= max, nil
 			case "notin":
 				return !(inputval >= min && inputval <= max), nil
 			default:
-				return false, fmt.Errorf("invalid op %v for type %v value %v", self.ruleOp, input_kind, self.ruleVal)
+				return false, fmt.Errorf("invalid op %v for type %v value %v", cmprule.ruleOp, inputKind, cmprule.ruleVal)
 			}
-		case VALUE_LIST:
+		case valueList:
 			var vallist []float64
-			for _, s := range self.strList {
+			for _, s := range cmprule.strList {
 				v, err := strconv.ParseFloat(s, 64)
 				if err != nil {
 					return false, fmt.Errorf("%v is not a valid int value", s)
@@ -666,82 +674,82 @@ func (self *CMPRule) compareNumberic(input interface{}) (bool, error) {
 					break
 				}
 			}
-			switch self.ruleOp {
+			switch cmprule.ruleOp {
 			case "is":
 				return found, nil
 			case "not":
 				return !found, nil
 			default:
-				return false, fmt.Errorf("invalid op %v for type %v, value %v", self.ruleOp, input_kind, self.ruleVal)
+				return false, fmt.Errorf("invalid op %v for type %v, value %v", cmprule.ruleOp, inputKind, cmprule.ruleVal)
 			}
 		default:
-			return false, fmt.Errorf("invalid op and/or value: %v %v", self.ruleOp, self.ruleVal)
+			return false, fmt.Errorf("invalid op and/or value: %v %v", cmprule.ruleOp, cmprule.ruleVal)
 
 		}
 	default:
-		return false, fmt.Errorf("unsupported type:%v", input_kind)
+		return false, fmt.Errorf("unsupported type:%v", inputKind)
 	}
 }
 
-//Set f as function to divide rawrule into 3 strings as struct field_name, operator, values.
-//this is used by all types.
-//default function use ":" as seperator, 1st field as filed_name, 2nd as operator, rest of stirng become values
-func (self *CMPRule) SetDivideRuleFunc(f func(rule string) (string, string, string, error)) {
-	self.divideRuleFunc = f
+// SetDivideRuleFunc set f as function to divide rawrule into 3 strings as struct field_name, operator, values.
+// this is used by all types.
+// default function use ":" as seperator, 1st field as filed_name, 2nd as operator, rest of stirng become values
+func (cmprule *CMPRule) SetDivideRuleFunc(f func(rule string) (string, string, string, error)) {
+	cmprule.divideRuleFunc = f
 }
 
-//Set f as function to parse a string that represents a range into two string contains min, max value.
-//this is used by all types support OP_NUM_IN and OP_NUM_NOTIN.
-//default function uses spaces as sperator
-func (self *CMPRule) SetParseRangeFunc(f func(rangeval string) (string, string, error)) {
-	self.parseRangeFunc = f
+// SetParseRangeFunc set f as function to parse a string that represents a range into two string contains min, max value.
+// this is used by all types support OP_NUM_IN and OP_NUM_NOTIN.
+// default function uses spaces as sperator
+func (cmprule *CMPRule) SetParseRangeFunc(f func(rangeval string) (string, string, error)) {
+	cmprule.parseRangeFunc = f
 }
 
-//Set f as function to parse a string that represents a number list into a slice of string, each contains a number.
-//this is used by all types support OP_NUM_IS and OP_NUM_NOT.
-//default function uses spaces as sperator.
-func (self *CMPRule) SetParseNumListFunc(f func(listval string) ([]string, error)) {
-	self.parseNumListFunc = f
+// SetParseNumListFunc set f as function to parse a string that represents a number list into a slice of string, each contains a number.
+// this is used by all types support OP_NUM_IS and OP_NUM_NOT.
+// default function uses spaces as sperator.
+func (cmprule *CMPRule) SetParseNumListFunc(f func(listval string) ([]string, error)) {
+	cmprule.parseNumListFunc = f
 }
 
-//Set f as function to parse a string that represents a IP prefixes into a slice of *net.IPNet.
-//this is used only by type net.IP.
-//default function uses spaces as sperator, and uses net.ParseCIDR
-func (self *CMPRule) SetParseIPNetListFunc(f func(listval string) ([]*net.IPNet, error)) {
-	self.parseIPNetListFunc = f
+// SetParseIPNetListFunc set f as function to parse a string that represents a IP prefixes into a slice of *net.IPNet.
+// this is used only by type net.IP.
+// default function uses spaces as sperator, and uses net.ParseCIDR
+func (cmprule *CMPRule) SetParseIPNetListFunc(f func(listval string) ([]*net.IPNet, error)) {
+	cmprule.parseIPNetListFunc = f
 }
 
-//Set f as function to parse a string that represents a list of string into a slice of string.
-//this is used only by type string.
-//default function uses space as seperator.
-func (self *CMPRule) SetParseStrListFunc(f func(listval string) ([]string, error)) {
-	self.parseStrListFunc = f
+// SetParseStrListFunc set f as function to parse a string that represents a list of string into a slice of string.
+// this is used only by type string.
+// default function uses space as seperator.
+func (cmprule *CMPRule) SetParseStrListFunc(f func(listval string) ([]string, error)) {
+	cmprule.parseStrListFunc = f
 }
 
-//Set f as function to parse a string that represents a number into int64
-//this is used by type int,int8,int16,int32,int64.
-//default function uses strconv.ParseInt(numstr, 0, 64).
-func (self *CMPRule) SetParseNumInt64Func(f func(numstr string) (int64, error)) {
-	self.parseNumInt64Func = f
+// SetParseNumInt64Func set f as function to parse a string that represents a number into int64
+// this is used by type int,int8,int16,int32,int64.
+// default function uses strconv.ParseInt(numstr, 0, 64).
+func (cmprule *CMPRule) SetParseNumInt64Func(f func(numstr string) (int64, error)) {
+	cmprule.parseNumInt64Func = f
 }
 
-//Set f as function to parse a string that represents time.Duration into int64.
-//this is used only by type time.Duration.
-//default function uses time.ParseDuration
-func (self *CMPRule) SetparseDurationInt64Func(f func(durationstr string) (int64, error)) {
-	self.parseDurationInt64Func = f
+// SetparseDurationInt64Func set f as function to parse a string that represents time.Duration into int64.
+// this is used only by type time.Duration.
+// default function uses time.ParseDuration
+func (cmprule *CMPRule) SetparseDurationInt64Func(f func(durationstr string) (int64, error)) {
+	cmprule.parseDurationInt64Func = f
 }
 
-//Set f as function to parse a string that represents time.Time into int64.
-//this is used only by type time.Time.
-//default function uses time.Parse, with format string as const TIMEFMTSTR
-func (self *CMPRule) SetparseTimeInt64Func(f func(timestr string) (int64, error)) {
-	self.parseTimeInt64Func = f
+// SetparseTimeInt64Func set f as function to parse a string that represents time.Time into int64.
+// this is used only by type time.Time.
+// default function uses time.Parse, with format string as const TIMEFMTSTR
+func (cmprule *CMPRule) SetparseTimeInt64Func(f func(timestr string) (int64, error)) {
+	cmprule.parseTimeInt64Func = f
 }
 
-//Set f as function to parse field_name string into a list field name,
-//each represents a field name in the nested struct
-//default function use "." as seperator like "aa.bb.cc"
-func (self *CMPRule) SetParseFieldNameFunc(f func(field_name string) []string) {
-	self.parseFieldNamFunc = f
+// SetParseFieldNameFunc set f as function to parse field_name string into a list field name,
+// each represents a field name in the nested struct
+// default function use "." as seperator like "aa.bb.cc"
+func (cmprule *CMPRule) SetParseFieldNameFunc(f func(field_name string) []string) {
+	cmprule.parseFieldNamFunc = f
 }

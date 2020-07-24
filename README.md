@@ -1,5 +1,5 @@
 # Overview
-[![PkgGoDev](https://pkg.go.dev/badge/github.com/hujun-open/cmprule](https://pkg.go.dev/github.com/hujun-open/cmprule)
+[![PkgGoDev](https://pkg.go.dev/badge/search?q=cmprule)](https://pkg.go.dev/search?q=cmprule)
 
 cmprule is a golang module that compares a struct field's value against a rule defined in human friendly text.
 
